@@ -1,0 +1,51 @@
+image: docker:dind
+
+cache:
+  key: "$CI_COMMIT_REF_NAME"
+  paths:
+    - node_modules/
+
+stages:
+  - test
+  - deploy
+
+before_script:
+  - pwd
+  - export USER_HOME=`pwd`/test
+
+test:
+  stage: test
+  image: node:10
+  script:
+    - npm run test
+  tags:
+    - develop
+  only:
+    refs:
+      - /^feature#[0-9]+$/ # https://regex101.com/r/SMeXVe/1
+  except:
+    - release
+
+deploy:
+  stage: deploy
+  image: alpine
+  before_script:
+    # Get ssh keys from target server and add them to known_hosts
+    - apk update
+    - 'which ssh-agent || ( apk add openssh-client )'
+    - eval $(ssh-agent -s)
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -p 22 -4 $PRODUCTION_HOST >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    # Add the private key defined in PRIVATE_KEY variable
+    - echo "$PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+  script:
+    - echo "Deploying the system"
+    - ssh root@$PRODUCTION_HOST -p 22 -4 "mkdir -p /opt/webapps"
+    - scp . $PRODUCTION_HOST:/opt/webapps/
+    - ssh root@$PRODUCTION_HOST -p 22 -4 "docker-compose -f /opt/webapps/docker-compose-prod.yml up -d --force-recreate"
+  tags:
+    - master
+  only:
+    - master

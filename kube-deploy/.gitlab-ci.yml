@@ -1,0 +1,60 @@
+image: docker:dind
+
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
+test:
+  stage: test
+  image: node:10
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+    - node_modules/
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - package-lock.json
+  services:
+    - name: postgres:10
+      alias: db
+  variables:
+    POSTGRES_DB: todo
+    POSTGRES_USER: "${DBUSER}"
+    POSTGRES_PASS: "${DBPASS}"
+    DATABASE_URL: "postgres://${DBUSER}:${DBPASS}@db/todo"
+  script:
+    - npm install
+    - npm run test
+
+build:
+  stage: build
+  image: docker:dind
+  before_script:
+    - docker login -u $USERNAME_REGISTRY -p $PASSWORD_REGISTRY $HOST_REGISTRY
+    - docker info
+  script:
+    - docker build -t $DOCKER_IMAGE_TAG .
+    - docker push $DOCKER_IMAGE_TAG
+
+deploy:
+  stage: deploy
+  variables:
+    APP_NAME: production
+    APP_LABEL: production
+    DEPLOY_HOST: test.net
+  environment:
+    name: production
+    url: http://test.net/
+  image: roffe/kubectl:v1.13.0
+  script:
+    # - kubectl delete --ignore-not-found=true secret registry-auth
+    # - kubectl create secret docker-registry registry-auth --docker-server=$HOST_REGISTRY --docker-username=$USERNAME_REGISTRY --docker-password=$PASSWORD_REGISTRY
+    - cat k8s.yaml | envsubst | kubectl apply -f -
+  only:
+    - master
