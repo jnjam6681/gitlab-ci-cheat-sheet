@@ -1,0 +1,50 @@
+image: docker:dind
+
+test:
+  stage: test
+  script: gradle check
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: pull
+    paths:
+      - node_modules/
+  only:
+    refs:
+      - /^feature[0-9]+$/ # https://regex101.com/r/SMeXVe/1
+
+build:
+  stage: build
+  script:
+    - npm install
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: push
+    paths:
+      - build
+
+deploy:
+  image: alpine
+  stage: deploy
+  before_script:
+    # Get ssh keys from target server and add them to known_hosts
+    - apk update
+    - 'which ssh-agent || ( apk add openssh-client )'
+    - eval $(ssh-agent -s)
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -p 22 -4 $PRODUCTION_HOST >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    # Add the private key defined in PRIVATE_KEY variable
+    - echo "$PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+  script:
+    - echo "Deploying the system"
+    - ssh root@$PRODUCTION_HOST -p 22 -4 "mkdir -p /opt/webapps"
+    - scp . $PRODUCTION_HOST:/opt/webapps/
+    - ssh root@$PRODUCTION_HOST -p 22 -4 "docker-compose -f /opt/webapps/docker-compose-prod.yml up -d --force-recreate"
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: pull
+    paths:
+      - build
+  only:
+    - master
