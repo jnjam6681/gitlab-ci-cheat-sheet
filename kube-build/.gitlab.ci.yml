@@ -1,0 +1,40 @@
+image: docker:stable
+# image: php-nginx:7.3
+
+services:
+  - docker:18.09-dind
+
+stages:
+  - build
+  - deploy
+
+variables:
+  # DOCKER_DRIVER: overlay
+  DOCKER_HOST: tcp://localhost:2375
+
+build:
+  stage: build
+  # image:
+  # services:
+  #    - docker:18.09-dind
+  before_script:
+    # - docker login -u $USERNAME_REGISTRY -p $PASSWORD_REGISTRY $HOST_REGISTRY
+    - docker info
+  script:
+    - php artisan
+    - docker build -t $CI_COMMIT_SHORT_SHA .
+    # - docker push $DOCKER_IMAGE_TAG
+  tags:
+    - gitlab-test
+  only:
+    - master
+
+deploy:
+  stage: build
+  image: lachlanevenson/k8s-kubectl:v1.15.4
+  script:
+    - kubectl get po
+  tags:
+    - gitlab-test
+  only:
+    - master
