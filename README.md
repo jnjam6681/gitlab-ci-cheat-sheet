@@ -1,2 +1,2 @@
-# gitlab-ci-devops
-basic gitlab-ci for development
+# gitlab-ci-cheat-sheet
+basic gitlab-ci for developers
