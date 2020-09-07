@@ -1,0 +1,23 @@
+image: docker:stable
+
+stages:
+  - build
+
+variables:
+  GCR_IMAGE: $GOOGLE_GCR/example:$CI_COMMIT_SHORT_SHA-$CI_COMMIT_REF_NAME
+  # DOCKER_DRIVER: overlay
+  DOCKER_HOST: tcp://localhost:2375
+
+build:
+  stage: build
+  services:
+    - docker:18.09-dind
+  before_script:
+    - echo $GOOGLE_CLOUD_ACCOUNT | docker login -u _json_key --password-stdin $GOOGLE_GCR
+  script:
+    - docker build -t $GCR_IMAGE .
+    - docker push $GCR_IMAGE
+  tags:
+    - feature
+  except:
+    - /^feature\/.*/
