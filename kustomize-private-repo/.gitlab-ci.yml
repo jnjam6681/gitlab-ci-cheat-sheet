@@ -1,0 +1,49 @@
+image: docker:stable
+
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE_NAME: example:$CI_COMMIT_SHORT_SHA-$CI_COMMIT_REF_NAME
+  # DOCKER_DRIVER: overlay
+  DOCKER_HOST: tcp://localhost:2375
+
+build:
+  stage: build
+  services:
+    - docker:18.09-dind
+  before_script:
+    - echo $SSH_PRIVATE_KEY > private.pem
+    - sed -i -e "s/-----BEGIN OPENSSH PRIVATE KEY-----/&\n/" -i -e "s/\S\{70\\}/&\n/g" -i -e "s/-----END OPENSSH PRIVATE KEY-----/\n&/" private.pem
+  script:
+    - docker build -t $IMAGE_NAME .
+    - docker push $IMAGE_NAME
+  tags:
+    - feature
+  except:
+    - /^feature\/.*/
+    - master
+
+deploy_development:
+  stage: deploy
+  image: jnjam6681/kustomize:3.8.1-alpine
+  before_script:
+    - 'which ssh-agent || ( apk add openssh-client )'
+    - eval $(ssh-agent -s)
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -p 22 -4 github.com >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - git config --global user.email "gitlab@example.com"
+    - git config --global user.name "GitLab CI/CD"
+  script:
+    - git clone git@github.com:jnjam6681/kustomize-cheat-sheet.git
+    - cd kustomize-cheat-sheet/environments/development
+    - kustomize edit set image $IMAGE_NAME
+    - cat kustomization.yaml
+    - git commit -am '🌈 Update '$CI_PROJECT_NAME' image '$CI_COMMIT_SHORT_SHA
+    - git push origin master
+  only:
+    - develop
